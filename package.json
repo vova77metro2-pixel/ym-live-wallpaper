@@ -1,0 +1,22 @@
+{
+  "name": "ym-live-wallpaper",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Живые видео-обои и настройка интерфейса для десктопного клиента Яндекс Музыки",
+  "keywords": [
+    "yandex-music",
+    "live-wallpaper",
+    "electron",
+    "mod",
+    "windows"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "patch": "node tools/patch.js",
+    "unpatch": "node tools/unpatch.js"
+  },
+  "devDependencies": {
+    "@electron/asar": "^3.2.0",
+    "resedit": "^3.1.0"
+  }
+}

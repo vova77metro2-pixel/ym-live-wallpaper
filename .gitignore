@@ -1,0 +1,28 @@
+# Зависимости
+node_modules/
+package-lock.json
+
+# Сборки и дистрибутивы (это релизы, не исходники)
+dist/
+*.zip
+*.7z
+
+# Бинарники — отдаются через GitHub Releases, не коммитятся
+node.exe
+*.exe
+*.asar
+*.mp4
+
+# Локальные логи и бэкапы
+*.log
+*.bak
+*.backup-*
+settings.json
+wallpaper.css
+
+# Мусор ОС и редакторов
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
