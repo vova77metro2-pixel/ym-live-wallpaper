@@ -38,7 +38,7 @@ const DEFAULTS = {
   // Плеер
   playerOpacity: 0, playerBlur: 0, hidePlayer: false,
   // Прочее
-  hideSplash: true, textShadow: true, hideCovers: false,
+  hideSplash: true, textShadow: true, hideCovers: false, hideAccount: false, hideMainContent: false,
   vignette: 0, grain: 0,
   // Интерфейс
   iconScale: 100, rowGap: 0,
@@ -65,6 +65,8 @@ const TABS = [
       { key: 'radius', type: 'range', min: 0, max: 28, step: 2, label: 'Скругление карточек', unit: ' px' },
       { key: 'sidebarCompact', type: 'bool', label: 'Компактный сайдбар', hint: 'Только Поиск, Моя волна, Мне нравится' },
       { key: 'hideSidebar', type: 'bool', label: 'Скрыть сайдбар', hint: 'Виден только при наведении' },
+      { key: 'hideAccount', type: 'bool', label: 'Убрать плашку аккаунта', hint: 'Прячет «Валера / Плюс» внизу сайдбара' },
+      { key: 'hideMainContent', type: 'bool', label: 'Убрать контент главной', hint: 'Остаются только обои и панели — как в видео' },
       { key: 'hideCovers', type: 'bool', label: 'Убрать обложки', hint: 'Текст поверх обоев, без картинок' }
     ]
   },
@@ -218,6 +220,8 @@ function applyToDom(s) {
   root.classList.toggle('ymwp-hide-sidebar', !!s.hideSidebar);
   root.classList.toggle('ymwp-hide-player', !!s.hidePlayer);
   root.classList.toggle('ymwp-hide-covers', !!s.hideCovers);
+  root.classList.toggle('ymwp-hide-account', !!s.hideAccount);
+  root.classList.toggle('ymwp-hide-main', !!s.hideMainContent);
 
   // Гарнитура: css/вес/стиль берём из выбранной опции fontselect
   let family = '', optWeight = '', optStyle = '';
@@ -325,6 +329,19 @@ body, body *{
 .ymwp-hide-covers [class*="Card_cover"],
 .ymwp-hide-covers [class*="EntityCard_image"],
 .ymwp-hide-covers [class*="CardImage"]{ display:none !important; }
+/* --- убрать плашку аккаунта внизу сайдбара ---
+   Классы Яндекса обфусцированы, поэтому ловим по нескольким признакам:
+   UserProfile, Account, Footer, PinsList в конце навбара. */
+.ymwp-hide-account [class*="UserProfile"],
+.ymwp-hide-account [class*="Account"],
+.ymwp-hide-account [class*="NavbarDesktop_user"],
+.ymwp-hide-account [class*="NavbarDesktop_account"],
+.ymwp-hide-account [class*="NavbarDesktop_bottom"],
+.ymwp-hide-account [class*="NavbarDesktop_footer"],
+.ymwp-hide-account [class*="UserInfo"],
+.ymwp-hide-account [class*="ProfileCard"]{
+  display:none !important;
+}
 /* --- тень текста --- */
 .ymwp-text-shadow h1,.ymwp-text-shadow h2,.ymwp-text-shadow h3{
   text-shadow:0 1px 3px rgba(0,0,0,.55);
@@ -357,7 +374,50 @@ ${s.hideSplash ? `
   background-image:none !important;
 }
 `;
+  // Прячем карусель «Моя волна» точечно через JS.
+  // Скрытие вынесено в hideCarousel() и дополнительно вызывается по
+  // MutationObserver: SPA Яндекса пересоздаёт DOM при навигации, и без
+  // повторного применения карусель возвращалась при переходе назад.
+  try {
+    hideCarousel(s.hideMainContent);
+  } catch (e) { logstep('carousel hide failed: ' + e.message); }
   logstep('applyToDom ok');
+}
+
+// Скрывает/показывает карусель. Проверяет, что элемент на главной:
+// ищет предка с классом MainPage — на других страницах VibePage тоже
+// встречается, поэтому одного класса недостаточно.
+function hideCarousel(hide) {
+  const isOnMainPage = (el) => {
+    let n = el;
+    while (n && n !== document.body) {
+      if (n.className && typeof n.className === 'string' && /MainPage/.test(n.className)) return true;
+      n = n.parentElement;
+    }
+    return false;
+  };
+
+  // Скрываем ТОЛЬКО саму карусель (WheelDesktop + её анимацию).
+  // VibePage_root сюда НЕ входит: это корень всей страницы «Моя волна»,
+  // вместе с ним скрывался и плеер VibePlayerBar.
+  const candidates = document.querySelectorAll(
+    '[class*="WheelDesktop"], [class*="VibeWidgetAnimation"]'
+  );
+
+  let hidden = 0;
+  for (const el of candidates) {
+    if (hide && isOnMainPage(el)) {
+      el.style.setProperty('visibility', 'hidden', 'important');
+      el.style.setProperty('opacity', '0', 'important');
+      el.style.setProperty('pointer-events', 'none', 'important');
+      hidden++;
+    } else {
+      el.style.removeProperty('visibility');
+      el.style.removeProperty('opacity');
+      el.style.removeProperty('pointer-events');
+    }
+  }
+  return { hidden, total: candidates.length };
 }
 
 // ---------- Разметка ----------
@@ -551,8 +611,7 @@ function reopen() {
 }
 
 function mount() {
-  if (mounted || !document.body) return;
-  const css = document.createElement('style');
+  if (mounted || !document.body) return;  const css = document.createElement('style');
   css.id = 'ymwp-panel-css';
   css.textContent = PANEL_CSS;
   document.head.appendChild(css);
@@ -598,7 +657,29 @@ function mount() {
     const action = t.getAttribute('data-action');
     if (action === 'close') return close();
     if (action === 'reset') return resetAll();
-    if (action === 'pick') { ipcRenderer.invoke('ymwp:pick-wallpaper').catch(() => {}); return; }
+    if (action === 'pick') {
+      // Показываем статус: большое видео пережимается в 1080p, это не мгновенно.
+      const btn = e.target.closest('.ymwp-pick');
+      if (btn) {
+        btn.disabled = true;
+        btn.dataset.orig = btn.textContent;
+        btn.textContent = 'Готовлю видео…';
+        btn.style.opacity = '0.6';
+      }
+      ipcRenderer.invoke('ymwp:pick-wallpaper')
+        .then((res) => {
+          if (btn) {
+            btn.textContent = res ? 'Готово!' : (btn.dataset.orig || 'Выбрать видео…');
+            setTimeout(() => {
+              if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.textContent = btn.dataset.orig || 'Выбрать видео…'; }
+            }, 1500);
+          }
+        })
+        .catch(() => {
+          if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.textContent = btn.dataset.orig || 'Выбрать видео…'; }
+        });
+      return;
+    }
   });
 
   holder.addEventListener('input', (e) => {
@@ -630,11 +711,62 @@ function mount() {
   });
 
   applyToDom(readSettings());
+  startCarouselObserver();
   logstep('panel mounted');
 }
 
+// Автозапуск наблюдателя: он нужен сразу, даже если панель ни разу не
+// открывали — иначе скрытие карусели теряется при навигации SPA.
+(function bootObserver() {
+  const tryStart = () => {
+    if (!document.body) return false;
+    startCarouselObserver();
+    return true;
+  };
+  if (tryStart()) return;
+  let tries = 0;
+  const iv = setInterval(() => {
+    tries++;
+    if (tryStart() || tries > 100) clearInterval(iv);
+  }, 300);
+})();
+
 // ---------- Кнопка настроек ----------
 let gearObserver = null;
+
+// ---------- Наблюдатель за SPA-навигацией ----------
+// Яндекс пересоздаёт DOM при переходе между разделами. Без повторного
+// применения скрытие карусели терялось: уходишь на другую вкладку и
+// возвращаешься — карусель снова на месте. Следим за изменениями body
+// и переприменяем настройки (с дебаунсом, чтобы не грузить CPU).
+let carouselObserver = null;
+let reapplyTimer = null;
+
+function startCarouselObserver() {
+  if (carouselObserver || !document.body) return;
+  // Применяем СРАЗУ в следующем кадре, без debounce: задержка в 250 мс
+  // была видна как «мелькание» карусели при переключении вкладок.
+  let scheduled = false;
+  const applyNow = () => {
+    scheduled = false;
+    try {
+      const s = readSettings();
+      hideCarousel(!!s.hideMainContent);
+      const root = document.documentElement;
+      root.classList.toggle('ymwp-hide-main', !!s.hideMainContent);
+      root.classList.toggle('ymwp-hide-account', !!s.hideAccount);
+      root.classList.toggle('ymwp-hide-covers', !!s.hideCovers);
+    } catch (e) { logstep('reapply failed: ' + e.message); }
+  };
+  const schedule = () => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(applyNow);
+  };
+  carouselObserver = new MutationObserver(schedule);
+  carouselObserver.observe(document.body, { childList: true, subtree: true });
+  logstep('carousel observer started');
+}
 
 function mountGearButton() {
   if (document.getElementById('ymwp-gear')) return;

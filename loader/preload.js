@@ -112,6 +112,31 @@ html,body,#root{
   background-color:transparent !important;
   background-image:none !important;
 }
+/* Контентные области: у Яндекс Музыки серый фон у страниц, списков
+   треков, поиска и панели плеера. Снимаем его, чтобы обои просвечивали. */
+[class*="Content_root"],
+[class*="Content_main"],
+[class*="MainPage_"],
+[class*="Page_root"],
+[class*="Collection_root"],
+[class*="PlaylistPage_"],
+[class*="SearchPage_"],
+[class*="Search_root"],
+[class*="TrackList"],
+[class*="TracksList"],
+[class*="Playlist_root"]{
+  background-color:transparent !important;
+  background-image:none !important;
+}
+/* Панель плеера внизу и полоса текущего трека */
+[class*="PlayerBar"],
+[class*="playingBar"],
+[class*="NowPlaying"],
+[class*="TrackBar"],
+[class*="Player_root"]{
+  background-color:transparent !important;
+  background-image:none !important;
+}
 /* body > * с z-index:1 РАНЬШЕ ломал стеклянные панели и цвет иконок:
    любой дочерний контейнер получал свой stacking context. Видео и так
    на z-index:0, а интерфейс лежит выше него по порядку документа. */
