@@ -34,14 +34,18 @@ contextBridge.exposeInMainWorld('ymwp', {
 let video = null;
 let appVisible = true; // что сообщил main-процесс (свёрнуто / перекрыто / скрыто)
 
+// Видео НИКОГДА не ставим на паузу при сворачивании/перекрытии окна.
+// Раньше здесь была проверка !document.hidden, из-за неё Chromium ставил
+// паузу, когда окно уходило в трей, и при возврате обои оказывались замершими.
+// Теперь видео всегда играет: это фон, экономить кадры на нём бессмысленно.
 function shouldPlay() {
-  return appVisible && !document.hidden;
+  return true;
 }
 
 function applyPlayback() {
   if (!video) return;
-  if (shouldPlay()) video.play().catch(() => {});
-  else video.pause(); // декодирование и рендер кадров останавливаются
+  // Всегда играем. .play() безопасен и для уже играющего video.
+  if (video.paused) video.play().catch(() => {});
 }
 
 // ---------- 4. Инъекция видеоплеера ----------
@@ -227,8 +231,22 @@ ipcRenderer.on('ymwp:play', (_e, visible) => {
 
 ipcRenderer.on('ymwp:reload', () => reinject('ipc'));
 
-// Chromium сам шлёт visibilitychange при сворачивании и полном перекрытии окна
+// Chromium сам шлёт visibilitychange при сворачивании и полном перекрытии окна.
+// applyPlayback() теперь всегда играет, поэтому события безопасны.
 document.addEventListener('visibilitychange', applyPlayback);
+
+// Страховка: если Chromium всё же поставил паузу при скрытии окна
+// (сворачивание в трей), возвращаем воспроизведение при возврате.
+for (const ev of ['resume', 'pageshow']) {
+  window.addEventListener(ev, applyPlayback);
+}
+// И раз в 2 секунды проверяем: если видео стоит паузой — запускаем.
+// Это закрывает случай, когда Chromium ставит паузу без всяких событий.
+setInterval(() => {
+  if (video && video.paused && !video.ended) {
+    video.play().catch(() => {});
+  }
+}, 2000);
 
 // Первый жест пользователя — на случай автoplay-политики при включённом звуке
 document.addEventListener('pointerdown', () => applyPlayback(), { once: true });
